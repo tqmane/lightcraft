@@ -95,6 +95,8 @@ impl Store for FsStore {
         }
         std::fs::rename(&tmp, self.path(name))?;
         self.sync_dir();
+        #[cfg(target_os = "android")]
+        crate::safe_file::publish_document(&self.path(name))?;
         Ok(())
     }
 
@@ -121,6 +123,8 @@ impl Store for FsStore {
         };
         std::fs::rename(&tmp, self.path(name))?;
         self.sync_dir();
+        #[cfg(target_os = "android")]
+        crate::safe_file::publish_document(&self.path(name))?;
         Ok(n)
     }
 
@@ -142,7 +146,10 @@ impl Store for FsStore {
             // ([`Store::truncate`]) before appending again.
             self.appender = None;
         }
-        written
+        written?;
+        #[cfg(target_os = "android")]
+        crate::safe_file::publish_document(&self.path(name))?;
+        Ok(())
     }
 
     fn truncate(&mut self, name: &str, len: u64) -> io::Result<()> {
@@ -156,7 +163,10 @@ impl Store for FsStore {
             Err(e) => return Err(e),
         };
         f.set_len(len)?;
-        f.sync_all()
+        f.sync_all()?;
+        #[cfg(target_os = "android")]
+        crate::safe_file::publish_document(&self.path(name))?;
+        Ok(())
     }
 
     fn describe(&self) -> String {

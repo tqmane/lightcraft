@@ -19,7 +19,7 @@
 //! window (issue #7). Their `--help` / `--version` output and diagnostics then have no console to
 //! go to; use `lightcraft-cli` (a console program) from a terminal, or a debug build.
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
-#![forbid(unsafe_code)]
+#![cfg_attr(not(target_os = "android"), forbid(unsafe_code))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod alloc_release;
@@ -56,6 +56,8 @@ impl eframe::App for App {
         self.1.tick(&mut self.0, ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        #[cfg(target_os = "android")]
+        rfd::stylus_input(_ctx, raw);
         self.0.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -243,52 +245,73 @@ fn services() -> Services {
             rfd::FileDialog::new().set_title(lightcraft_ui_egui::i18n::tr("Open Library")).pick_folder().map(|p| p.to_string_lossy().to_string())
         })),
         open_with: Some(Box::new(|path: &str, app: &str| {
-            // spawned, never waited for: the editor runs alongside
-            let app = app.trim();
-            let mut c = if cfg!(target_os = "macos") {
-                let mut c = std::process::Command::new("open");
-                if !app.is_empty() {
-                    c.args(["-a", app]);
-                }
-                c
-            } else if app.is_empty() {
-                if cfg!(target_os = "windows") {
-                    let mut c = std::process::Command::new("cmd");
-                    c.args(["/C", "start", ""]);
+            #[cfg(target_os = "android")]
+            {
+                rfd::open_with(path, app)
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                // spawned, never waited for: the editor runs alongside
+                let app = app.trim();
+                let mut c = if cfg!(target_os = "macos") {
+                    let mut c = std::process::Command::new("open");
+                    if !app.is_empty() {
+                        c.args(["-a", app]);
+                    }
                     c
+                } else if app.is_empty() {
+                    if cfg!(target_os = "windows") {
+                        let mut c = std::process::Command::new("cmd");
+                        c.args(["/C", "start", ""]);
+                        c
+                    } else {
+                        std::process::Command::new("xdg-open")
+                    }
                 } else {
-                    std::process::Command::new("xdg-open")
-                }
-            } else {
-                std::process::Command::new(app)
-            };
-            c.arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
+                    std::process::Command::new(app)
+                };
+                c.arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
+            }
         })),
         open_url: Some(Box::new(|url: &str| {
-            if !url.starts_with("https://") {
-                return Err("only https links are opened".into());
+            #[cfg(target_os = "android")]
+            {
+                rfd::that(url)
             }
-            let status = if cfg!(target_os = "macos") {
-                std::process::Command::new("open").arg(url).status()
-            } else if cfg!(target_os = "windows") {
-                std::process::Command::new("explorer").arg(url).status()
-            } else {
-                std::process::Command::new("xdg-open").arg(url).status()
-            };
-            status.map(|_| ()).map_err(|e| e.to_string())
+            #[cfg(not(target_os = "android"))]
+            {
+                if !url.starts_with("https://") {
+                    return Err("only https links are opened".into());
+                }
+                let status = if cfg!(target_os = "macos") {
+                    std::process::Command::new("open").arg(url).status()
+                } else if cfg!(target_os = "windows") {
+                    std::process::Command::new("explorer").arg(url).status()
+                } else {
+                    std::process::Command::new("xdg-open").arg(url).status()
+                };
+                status.map(|_| ()).map_err(|e| e.to_string())
+            }
         })),
         reveal: Some(Box::new(|path: &str| {
-            let status = if cfg!(target_os = "macos") {
-                std::process::Command::new("open").args(["-R", path]).status()
-            } else if cfg!(target_os = "windows") {
-                std::process::Command::new("explorer").arg(format!("/select,{path}")).status()
-            } else {
-                let dir = std::path::Path::new(path).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| ".".into());
-                std::process::Command::new("xdg-open").arg(dir).status()
-            };
-            status
-                .map_err(|e| e.to_string())
-                .and_then(|s| if s.success() || cfg!(target_os = "windows") { Ok(()) } else { Err(format!("reveal failed: {s}")) })
+            #[cfg(target_os = "android")]
+            {
+                rfd::reveal(path)
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                let status = if cfg!(target_os = "macos") {
+                    std::process::Command::new("open").args(["-R", path]).status()
+                } else if cfg!(target_os = "windows") {
+                    std::process::Command::new("explorer").arg(format!("/select,{path}")).status()
+                } else {
+                    let dir = std::path::Path::new(path).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| ".".into());
+                    std::process::Command::new("xdg-open").arg(dir).status()
+                };
+                status
+                    .map_err(|e| e.to_string())
+                    .and_then(|s| if s.success() || cfg!(target_os = "windows") { Ok(()) } else { Err(format!("reveal failed: {s}")) })
+            }
         })),
         pick_files: Some(Box::new(|| {
             rfd::FileDialog::new()
@@ -417,7 +440,14 @@ ENVIRONMENT:
                    Vulkan on Linux; off = render on the CPU); else WGPU_BACKEND. LIGHTCRAFT_GPU=0: CPU rendering.
 ";
 
-fn main() -> eframe::Result {
+pub fn main() -> eframe::Result {
+    #[cfg(target_os = "android")]
+    lightcraft_catalog::safe_file::set_document_publisher(|path| rfd::publish_file(path).map_err(std::io::Error::other));
+    #[cfg(target_os = "android")]
+    lightcraft_catalog::safe_file::set_document_mutations(
+        |from, to| rfd::move_document(from, to).map_err(std::io::Error::other),
+        |path| rfd::remove_document(path).map_err(std::io::Error::other),
+    );
     lightcraft_engine::guard::install_hook(std::env::temp_dir().join("lightcraft-panics.log"));
     alloc_release::install();
     let mut control_port: Option<u16> = std::env::var("LIGHTCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
@@ -425,7 +455,7 @@ fn main() -> eframe::Result {
     let mut seed_demo = true;
     let mut in_memory = false;
     let mut library_dir: Option<std::path::PathBuf> = None;
-    let mut args = std::env::args().skip(1);
+    let mut args = app_args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
@@ -463,6 +493,8 @@ fn main() -> eframe::Result {
     let gpu_on = prefs.as_ref().is_none_or(|u| u.settings.gpu) && gpu_crash.is_none();
     lightcraft_engine::gpu::set_enabled(gpu_on);
     let options = eframe::NativeOptions {
+        #[cfg(target_os = "android")]
+        android_app: rfd::android_app(),
         viewport: egui::ViewportBuilder::default()
             .with_title("LightCraft")
             .with_inner_size([1600.0, 1000.0])
@@ -479,7 +511,7 @@ fn main() -> eframe::Result {
     };
     eframe::run_native(
         "LightCraft",
-        options,
+        platform_options(options),
         Box::new(move |cc| {
             let (session, problem) = open_session(in_memory, library_dir, seed_demo && files.is_empty());
             let mut app = LightcraftApp::new(session, services());
@@ -604,5 +636,40 @@ mod tests {
         let (loaded, warning, _) = load_prefs_at(&path);
         assert!(loaded.is_some() && warning.is_none());
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)] // Android's loader requires this exact exported entry-point symbol.
+#[unsafe(no_mangle)]
+pub fn android_main(app: rfd::AndroidApp) {
+    if let Err(error) = rfd::initialize(app) {
+        eprintln!("Android initialization failed: {error}");
+        return;
+    }
+    if let Err(error) = main() {
+        rfd::report_error(&format!("Application failed: {error}"));
+    }
+}
+
+#[cfg(target_os = "android")]
+extern crate craft_android as arboard;
+#[cfg(target_os = "android")]
+extern crate craft_android as rfd;
+
+fn platform_options(options: eframe::NativeOptions) -> eframe::NativeOptions {
+    #[cfg(target_os = "android")]
+    let options = rfd::configure_options(options);
+    options
+}
+
+fn app_args() -> impl Iterator<Item = String> {
+    #[cfg(not(target_os = "android"))]
+    {
+        std::env::args()
+    }
+    #[cfg(target_os = "android")]
+    {
+        rfd::arguments().into_iter()
     }
 }

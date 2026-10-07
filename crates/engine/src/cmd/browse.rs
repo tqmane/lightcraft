@@ -221,6 +221,16 @@ pub fn specs() -> Vec<CommandSpec> {
 /// refused when `to` exists (a case-only rename on a case-insensitive file system goes through
 /// a temporary name). Missing parents of `to` are created.
 pub(crate) fn rename_folder_on_disk(from: &str, to: &str) -> std::result::Result<(), String> {
+    rename_folder_local(from, to)?;
+    #[cfg(target_os = "android")]
+    if let Err(error) = lightcraft_catalog::safe_file::move_document(Path::new(from), Path::new(to)) {
+        rename_folder_local(to, from).map_err(|rollback| format!("{error}; local rollback failed: {rollback}; files are retained"))?;
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+fn rename_folder_local(from: &str, to: &str) -> std::result::Result<(), String> {
     let (src, dst) = (Path::new(from), Path::new(to));
     if !src.is_dir() {
         return Err(format!("{from} is not a folder (moved or deleted?)"));

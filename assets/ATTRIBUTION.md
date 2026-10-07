@@ -27,3 +27,12 @@ Notes
   [storytold/craft-fonts](https://github.com/storytold/craft-fonts), with their licences and attribution in its
   `ATTRIBUTION.md`, and are embedded only in builds made with the optional `CRAFT_FONTS_DIR` build input (all official
   releases). Never commit font files here; add new fonts to craft-fonts (craftrules `standards/fonts.md`).
+
+## Android packaging assets
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `packaging/android/res/` | Android themes, provider paths and adaptive-icon wrapper | LightCraft Android contributors | Original work | MIT OR Apache-2.0; repository LICENSE-MIT / LICENSE-APACHE |
+| Generated `craft_icon.png`, `craft_monochrome.xml`, `craft-icon.xml` | Android launcher icon and silhouette | Original application-icon author (see `assets/app-icon/`) | Existing `assets/app-icon/lightcraft-small.svg` and PNG | Same as `assets/app-icon/LICENSE.txt`; geometry/color preserved |
+
+The APK includes asset/font/dependency license texts under `assets/licenses`. Restricted ArtCraft brand artwork is excluded from Android UI code; upstream source copies retain their original license.

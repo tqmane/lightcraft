@@ -6,8 +6,8 @@ license.workspace = true
 publish = false
 default-run = "lightcraft"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
 
 [dependencies]
 lightcraft-engine = { workspace = true }
@@ -25,7 +25,26 @@ log = { workspace = true }
 winresource = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rfd = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { workspace = true }
+
+[lib]
+path = "src/main.rs"
+crate-type = ["cdylib"]
+
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))'.dependencies]
+rfd = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+craft-android = { package = "craft-android", path = "../../platform/android" }
+lightcraft-catalog = { workspace = true }
+eframe = { workspace = true, features = ["android-game-activity"] }
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+too_many_arguments = "allow"
+needless_range_loop = "allow"
+type_complexity = "allow"
+excessive_precision = "allow"

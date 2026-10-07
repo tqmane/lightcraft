@@ -120,3 +120,7 @@ of it. Full standard: `../craftrules/standards/never-crash.md`
 `geom`, `color`, `raster`, `tiff` (L0) → `raw`, `codecs`, `meta`, `develop` (L1) → `pipeline` → `catalog` → `engine`
 → `ui-egui`, `mcp` (L5) → apps `lightcraft` (desktop), `lightcraft-cli` (render/commands/MCP). `scenes` generates demo
 photos. `xtask` = tooling (`ci`, `layers`, `assets`, `parity`, `wasm`, `corpus`, `stats`).
+
+## Android port boundary
+
+The `android` branch also builds the original app as a GameActivity cdylib. Read `docs/android.md` before changing platform code. This port explicitly permits the small Java Android API adapter and the isolated `platform/android/src/native.rs` JNI boundary (two documented pointer conversions); exported Android entry-point attributes are allowed in the app shell. These exceptions do not relax the engine/UI safety or layering rules. Test only explicitly authorized devices with serial-qualified adb commands. Do not reboot a device without explicit authorization. Keep signing credentials and machine-specific build output out of Git. Distribution APKs are signed release builds containing arm64-v8a only.

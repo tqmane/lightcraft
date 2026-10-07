@@ -8,3 +8,8 @@ plan/
 .DS_Store
 .claude/
 /craft-fonts
+
+# Android local build output
+/packaging/android/build/
+/packaging/android/.gradle/
+/packaging/android/local.properties

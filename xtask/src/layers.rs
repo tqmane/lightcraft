@@ -50,6 +50,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("export", Class::Layer(3)),
     ("merge", Class::Layer(3)),
     ("engine", Class::Layer(4)),
+    ("craft-android", Class::Layer(5)),
     ("ui-egui", Class::Layer(5)),
     ("mcp", Class::Layer(5)),
     ("testkit", Class::Testkit),
@@ -64,6 +65,7 @@ pub const TABLE: &[(&str, Class)] = &[
 /// L0: `raster` builds on `color` and `geom`; `color` uses `geom` for matrices.
 /// L1: `raw` and `codecs` read metadata through `meta`; `develop` uses `meta` for XMP.
 pub const INTRA_LAYER_ORDER: &[&[&str]] = &[
+    &["craft-android", "ui-egui"],
     &["geom", "color", "raster"],
     &["tiff", "raster"],
     &["meta", "raw"],

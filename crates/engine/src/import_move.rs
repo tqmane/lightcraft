@@ -218,6 +218,8 @@ pub(crate) fn finish(p: &Placed) -> Result<Vec<(String, String)>, String> {
     if injected(Fault::FailRemove) {
         return Err("could not remove the original (injected): it stays where it was".into());
     }
+    #[cfg(target_os = "android")]
+    lightcraft_catalog::safe_file::remove_document(&p.src).map_err(|e| format!("could not remove the original ({e}): it stays where it was"))?;
     fs::remove_file(&p.src).map_err(|e| format!("could not remove the original ({e}): it stays where it was"))?;
     let mut kept = Vec::new();
     for sc in &p.sidecars {
@@ -230,6 +232,11 @@ pub(crate) fn finish(p: &Placed) -> Result<Vec<(String, String)>, String> {
             && let Some(other) = sibling_photo(&sc.src)
         {
             kept.push((path, format!("also the sidecar of {other}: kept beside it")));
+            continue;
+        }
+        #[cfg(target_os = "android")]
+        if let Err(e) = lightcraft_catalog::safe_file::remove_document(&sc.src) {
+            kept.push((path, format!("could not remove the sidecar from its provider ({e})")));
             continue;
         }
         if let Err(e) = fs::remove_file(&sc.src) {

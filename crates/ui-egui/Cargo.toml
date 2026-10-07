@@ -28,3 +28,6 @@ lightcraft-codecs = { workspace = true }
 
 [build-dependencies]
 serde_json = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+craft-android = { path = "../../platform/android" }

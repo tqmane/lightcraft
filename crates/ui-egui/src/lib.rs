@@ -255,6 +255,8 @@ impl LightcraftApp {
 
     /// Run a UI or engine command by id. The single entry point for every frontend path.
     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        #[cfg(target_os = "android")]
+        let _android_command = rfd::command(id, params.clone());
         if let Some(r) = menus::run_ui_command(self, id, &params) {
             return r;
         }
@@ -478,6 +480,20 @@ impl LightcraftApp {
 
     /// Per-frame logic before layout (control channel, renders, shortcuts, drops).
     pub fn logic(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "android")]
+        if let Some((id, params)) = rfd::completed_command(ctx)
+            && let Err(e) = self.run(&id, params)
+        {
+            rfd::report_error(&e);
+        }
+        #[cfg(target_os = "android")]
+        if let Some(callback) = rfd::take_callback::<Self>() {
+            callback(self);
+        }
+        #[cfg(target_os = "android")]
+        if rfd::dialog_pending() {
+            return;
+        }
         i18n::set_language(self.ui.language);
         let t0 = now_ms();
         panels::library_problem::logic(self);
@@ -993,3 +1009,6 @@ mod cache_tests {
         assert_eq!(c.album_count_scans, 1);
     }
 }
+
+#[cfg(target_os = "android")]
+extern crate craft_android as rfd;

@@ -358,37 +358,52 @@ impl MoveFs for RealFs {
     }
 
     fn rename_no_replace(&self, a: &Path, b: &Path) -> std::io::Result<()> {
-        if self.exists(b) {
-            return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{} already exists", b.display())));
+        rename_local_no_replace(a, b)?;
+        #[cfg(target_os = "android")]
+        if let Err(error) = lightcraft_catalog::safe_file::move_document(a, b) {
+            rename_local_no_replace(b, a)
+                .map_err(|rollback| std::io::Error::other(format!("{error}; local rollback failed: {rollback}; files are retained")))?;
+            return Err(error);
         }
-        // A hard link fails when `b` exists — even if it appeared since the check above — so
-        // nothing is ever replaced. Volumes without hard links (FAT, some network shares) fall back
-        // to a plain rename after the check.
-        match std::fs::hard_link(a, b) {
-            Ok(()) => std::fs::remove_file(a).inspect_err(|_| {
-                // both names are the same file: dropping the new one loses nothing
-                let _ = std::fs::remove_file(b);
-            }),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
-            Err(_) => std::fs::rename(a, b),
-        }
+        Ok(())
     }
 
     fn copy_no_replace(&self, a: &Path, b: &Path) -> std::io::Result<()> {
-        use std::io::Write;
-        let bytes = std::fs::read(a)?;
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(b)?;
-        f.write_all(&bytes).and_then(|_| f.sync_all()).inspect_err(|_| {
+        let mut source = std::fs::File::open(a)?;
+        let mut target = std::fs::OpenOptions::new().write(true).create_new(true).open(b)?;
+        let result = std::io::copy(&mut source, &mut target).and_then(|_| target.sync_all());
+        #[cfg(target_os = "android")]
+        let result = result.and_then(|_| lightcraft_catalog::safe_file::publish_document(b));
+        result.inspect_err(|_| {
             let _ = std::fs::remove_file(b);
         })
     }
 
     fn remove_file(&self, p: &Path) -> std::io::Result<()> {
+        #[cfg(target_os = "android")]
+        lightcraft_catalog::safe_file::remove_document(p)?;
         std::fs::remove_file(p)
     }
 
     fn stem_sibling(&self, sidecar: &Path) -> Option<String> {
         crate::import_move::sibling_photo(sidecar)
+    }
+}
+
+fn rename_local_no_replace(a: &Path, b: &Path) -> std::io::Result<()> {
+    if std::fs::symlink_metadata(b).is_ok() {
+        return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{} already exists", b.display())));
+    }
+    // A hard link fails when `b` exists — even if it appeared since the check above — so
+    // nothing is ever replaced. Volumes without hard links (FAT, some network shares) fall back
+    // to a plain rename after the check.
+    match std::fs::hard_link(a, b) {
+        Ok(()) => std::fs::remove_file(a).inspect_err(|_| {
+            // both names are the same file: dropping the new one loses nothing
+            let _ = std::fs::remove_file(b);
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) => std::fs::rename(a, b),
     }
 }
 

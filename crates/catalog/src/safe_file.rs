@@ -156,6 +156,39 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     write_atomic_with(path, &mut |w| w.write_all(data)).map(|_| ())
 }
 
+/// The Android host publishes completed local writes through the user's document provider.
+/// The catalog remains independent of the UI, JNI and Android crates.
+#[cfg(target_os = "android")]
+static DOCUMENT_PUBLISHER: std::sync::OnceLock<fn(&Path) -> io::Result<()>> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "android")]
+pub fn set_document_publisher(publisher: fn(&Path) -> io::Result<()>) {
+    let _ = DOCUMENT_PUBLISHER.set(publisher);
+}
+
+#[cfg(target_os = "android")]
+pub fn publish_document(path: &Path) -> io::Result<()> {
+    DOCUMENT_PUBLISHER.get().map_or(Ok(()), |publish| publish(path))
+}
+
+#[cfg(target_os = "android")]
+static DOCUMENT_MOVE: std::sync::OnceLock<fn(&Path, &Path) -> io::Result<()>> = std::sync::OnceLock::new();
+#[cfg(target_os = "android")]
+static DOCUMENT_REMOVE: std::sync::OnceLock<fn(&Path) -> io::Result<()>> = std::sync::OnceLock::new();
+#[cfg(target_os = "android")]
+pub fn set_document_mutations(rename: fn(&Path, &Path) -> io::Result<()>, remove: fn(&Path) -> io::Result<()>) {
+    let _ = DOCUMENT_MOVE.set(rename);
+    let _ = DOCUMENT_REMOVE.set(remove);
+}
+#[cfg(target_os = "android")]
+pub fn move_document(from: &Path, to: &Path) -> io::Result<()> {
+    DOCUMENT_MOVE.get().map_or(Ok(()), |rename| rename(from, to))
+}
+#[cfg(target_os = "android")]
+pub fn remove_document(path: &Path) -> io::Result<()> {
+    DOCUMENT_REMOVE.get().map_or(Ok(()), |remove| remove(path))
+}
+
 /// [`write_atomic`] with streamed content: `fill` writes it (an error aborts and leaves the old
 /// file). Returns the length written.
 pub fn write_atomic_with(path: &Path, fill: &mut dyn FnMut(&mut dyn Write) -> io::Result<()>) -> io::Result<u64> {
@@ -179,6 +212,8 @@ fn replace_with(path: &Path, sync: bool, fill: &mut dyn FnMut(&mut dyn Write) ->
     if sync {
         sync_dir(parent_of(path));
     }
+    #[cfg(target_os = "android")]
+    publish_document(path)?;
     Ok(n)
 }
 
@@ -208,6 +243,8 @@ pub fn write_new_unique(candidates: &mut dyn Iterator<Item = PathBuf>, data: &[u
             match publish_new(&tmp, &path) {
                 Ok(()) => {
                     sync_dir(parent_of(&path));
+                    #[cfg(target_os = "android")]
+                    publish_document(&path)?;
                     return Ok(path);
                 }
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
